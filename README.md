@@ -1,154 +1,79 @@
-# 🛸 UFO Sightings Visualization Project
+# Astral Observer 🌌
 
-MATLAB tabanlı UFO gözlem verilerini analiz eden ve görselleştiren kapsamlı bir proje.
+A MATLAB-based UFO sightings visualization and analysis application. Explore over 80,000 documented sightings through interactive maps, 3D globes, and predictive analytics.
 
-## 📁 Proje Yapısı
+## Quick Start
+
+```matlab
+launch_app
+```
+
+That's it. The application handles everything else.
+
+## Features
+
+### Visualizations
+- **Map View** — Geographic scatter plot with shape-coded markers
+- **3D Globe** — Interactive Earth with topographic texture and hotspot overlay
+- **Shape Distribution** — Pie chart of UFO shapes (top 10 + others)
+- **Time Analysis** — Yearly trends, monthly patterns, hourly distribution
+- **Word Cloud** — Common terms from sighting descriptions
+
+### Analytics
+- **Stats Dashboard** — Total sightings, average duration, most common shapes, date range
+- **Top Cities** — Horizontal bar chart of UFO hotspots
+- **Prediction Engine** — Machine learning models (Decision Tree & Naive Bayes) to estimate sighting probability
+
+### Interactive
+- **Random Sighting** — Explore individual reports with full details
+- **Rotating Globe** — Mouse-controlled 3D Earth visualization
+- **Animated UI** — Pulsing title with neon glow effect
+
+## Project Structure
 
 ```
-ufoapp/
+astral-observer/
+├── UFOVisualizerApp.m      # Main application (App Designer)
+├── launch_app.m            # Quick launcher
+├── bg.jpeg                 # Welcome screen background
 ├── dataset/
-│   ├── scrubbed.csv          # Ham veri (80,334 satır)
-│   ├── ufo_cleaned.mat       # Temizlenmiş veri
-│   ├── basic_stats.png       # Temel istatistikler
-│   ├── ufo_map.png          # Dünya haritası
-│   ├── ufo_map_usa.png      # USA haritası
-│   └── ufo_interactive_map.html  # İnteraktif web haritası
-├── preprocess_data.m         # Veri temizleme scripti
-├── visualize_map.m           # Harita görselleştirme
-└── README.md                 # Bu dosya
+│   ├── ufo_optimized.mat   # Processed sighting data
+│   ├── ufo_model_ct.mat    # Decision Tree model
+│   └── ufo_model_nb.mat    # Naive Bayes model
+├── preprocess_data.m       # Data cleaning script
+├── train_ufo_model.m       # Decision Tree training
+└── train_ufo_model_nb.m    # Naive Bayes training
 ```
 
-## 🚀 Kullanım
+## Data Overview
 
-### 1. Veri Önişleme (Preprocessing)
+| Metric | Value |
+|--------|-------|
+| Total Sightings | ~80,000 |
+| Date Range | 1949 – 2013 |
+| Primary Source | USA (~95%) |
+| Top Shapes | Light, Circle, Triangle, Fireball, Sphere |
 
-İlk adım olarak ham veriyi temizleyin:
+## Requirements
 
-```matlab
-preprocess_data
-```
-
-Bu script:
-- ✅ CSV dosyasını yükler
-- ✅ Eksik koordinatları temizler
-- ✅ Tarih formatlarını düzenler
-- ✅ Şekil kategorilerini standardize eder
-- ✅ HTML karakterlerini temizler
-- ✅ Temizlenmiş veriyi `ufo_cleaned.mat` olarak kaydeder
-- ✅ Temel istatistikleri görselleştirir
-
-**Çıktılar:**
-- `dataset/ufo_cleaned.mat` - Temizlenmiş veri
-- `dataset/basic_stats.png` - Yıl, şekil ve ülke bazında istatistikler
-
-### 2. Harita Görselleştirme
-
-Temizlenen veriyi harita üzerinde gösterin:
-
-```matlab
-visualize_map
-```
-
-Bu script:
-- 🗺️ Dünya haritası üzerinde UFO noktalarını gösterir
-- 🎨 Şekil bazında renklendirme yapar
-- 🇺🇸 USA odaklı ayrı bir harita oluşturur
-- 🌐 İnteraktif HTML harita üretir (Leaflet.js)
-
-**Çıktılar:**
-- `dataset/ufo_map.png` - Global görünüm
-- `dataset/ufo_map_usa.png` - USA görünüm
-- `dataset/ufo_interactive_map.html` - İnteraktif harita
-
-İnteraktif haritayı tarayıcıda açmak için:
-```matlab
-web('dataset/ufo_interactive_map.html')
-```
-
-## 📊 Veri Yapısı
-
-### Ham Veri Kolonları
-| Kolon | Açıklama |
-|-------|----------|
-| `datetime` | Gözlem tarihi ve saati |
-| `city` | Şehir |
-| `state` | Eyalet (USA için) |
-| `country` | Ülke kodu |
-| `shape` | UFO şekli (disk, light, triangle, vb.) |
-| `duration (seconds)` | Gözlem süresi (saniye) |
-| `duration (hours/min)` | Gözlem süresi (okunabilir) |
-| `comments` | Gözlem açıklaması |
-| `date posted` | Raporlama tarihi |
-| `latitude` | Enlem |
-| `longitude` | Boylam |
-
-### Temizlenmiş Veri Ek Kolonları
-- `datetime_parsed`: Datetime formatında tarih
-- `year`, `month`, `day`: Ayrıştırılmış tarih bileşenleri
-
-## 📈 Veri İstatistikleri
-
-- **Toplam Gözlem:** ~80,000
-- **Tarih Aralığı:** 1949 - 2013
-- **Ülke Sayısı:** ~10
-- **En Çok Gözlem:** ABD (United States)
-- **En Çok Görülen Şekiller:**
-  1. Light
-  2. Circle
-  3. Triangle
-  4. Fireball
-  5. Sphere
-
-## 🎯 Özellikler
-
-### ✅ Tamamlanan
-- [x] Veri temizleme ve preprocessing
-- [x] Eksik değer kontrolü
-- [x] Koordinat validasyonu
-- [x] Şekil standardizasyonu
-- [x] Temel istatistiksel görselleştirme
-- [x] Global harita görselleştirme
-- [x] USA odaklı harita
-- [x] İnteraktif HTML harita (Leaflet.js)
-- [x] Hover ile detay gösterimi
-
-### 🔄 Gelecek Geliştirmeler
-- [ ] MATLAB App Designer ile GUI
-- [ ] Tarih bazlı filtreleme
-- [ ] Şekil bazlı filtreleme
-- [ ] Zaman serisi analizi
-- [ ] Heat map görselleştirme
-- [ ] Kümeleme (clustering) analizi
-- [ ] Animasyonlu zaman çizelgesi
-- [ ] Excel export özelliği
-
-## 🛠️ Teknik Gereksinimler
-
-- MATLAB R2019b veya üzeri
+- MATLAB R2019b or later
 - Mapping Toolbox
 - Statistics and Machine Learning Toolbox
 
-## 📝 Notlar
+## Technical Notes
 
-- Performans için harita görselleştirmelerinde veri alt kümeleri kullanılmıştır
-- İnteraktif HTML harita maksimum 1000 marker gösterir
-- Tüm koordinatlar WGS84 datum kullanır
+- Data is cached in `ufo_optimized.mat` for faster loading
+- Globe uses MATLAB's built-in topographic data (`topo.mat`)
+- Prediction models are pre-trained; retraining requires the original CSV
 
-## 🌐 İnteraktif Harita Özellikleri
+## UI Theme
 
-İnteraktif HTML haritada:
-- **🖱️ Hover:** Mouse ile noktaların üzerine gelin
-- **📍 Popup:** Noktaya tıklayınca:
-  - Şehir adı
-  - Gözlem tarihi
-  - UFO şekli
-  - Açıklama özeti
-- **🗺️ Zoom/Pan:** Haritada gezinin
-- **🎨 Legend:** Sağ altta şekil renk kodları
-
-## 📧 İletişim
-
-Sorularınız için: [email@example.com]
+The app uses a "Neon Terminal" aesthetic:
+- Dark background (`#0B1220`)
+- Accent colors: Aqua, Pink, Orange, Green
+- Consolas monospace font throughout
+- Panel borders with matching highlight colors
 
 ---
-**Not:** Bu proje eğitim amaçlıdır ve NUFORC (National UFO Reporting Center) verilerini kullanmaktadır.
+
+Data sourced from NUFORC (National UFO Reporting Center).

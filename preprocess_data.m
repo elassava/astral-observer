@@ -8,14 +8,13 @@ fprintf('Veri yükleniyor...\n');
 opts = detectImportOptions('dataset/scrubbed.csv');
 opts.VariableNamingRule = 'preserve';
 
-% OPTIMIZE: Sadece gerekli kolonları yükle
-opts = setvartype(opts, {'latitude', 'longitude', 'duration (seconds)'}, 'double');
-
-tic; % Zaman ölçümü başlat
+% Önce kolonları görelim
+tic;
 data = readtable('dataset/scrubbed.csv', opts);
 loadTime = toc;
 
-fprintf('✓ Toplam %d satır veri yüklendi (%.1f saniye)\n\n', height(data), loadTime);
+fprintf('✓ Toplam %d satır veri yüklendi (%.1f saniye)\n', height(data), loadTime);
+fprintf('Kolonlar: %s\n\n', strjoin(data.Properties.VariableNames, ', '));
 
 %% 2. Kolon İsimlerini Düzenle (Vectorized)
 fprintf('Kolon isimleri düzenleniyor...\n');

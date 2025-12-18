@@ -47,13 +47,13 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
         MinuteEditField matlab.ui.control.NumericEditField
         DatePicker    matlab.ui.control.DatePicker
         HourEditField matlab.ui.control.NumericEditField
-        DurationEditField matlab.ui.control.NumericEditField
-        ModelDropDown matlab.ui.control.DropDown
         PredictButton matlab.ui.control.Button
         ResultPanel   matlab.ui.container.Panel
         InputPanel    matlab.ui.container.Panel
         ResultLabel   matlab.ui.control.Label
-        PredictionGauge matlab.ui.control.LinearGauge
+        DurationShortLabel matlab.ui.control.Label
+        DurationMediumLabel matlab.ui.control.Label
+        DurationLongLabel matlab.ui.control.Label
         
         % Random View Components
         DataCardPanel matlab.ui.container.Panel
@@ -65,6 +65,12 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
         RandomDurationLabel matlab.ui.control.Label
         RandomDescTextArea matlab.ui.control.TextArea
         NextRandomButton matlab.ui.control.Button
+
+        % Hoax Analyzer Components
+        HoaxPanel     matlab.ui.container.Panel
+        HoaxTitleLabel matlab.ui.control.Label
+        HoaxScoreLabel matlab.ui.control.Label
+        HoaxVerdictLabel matlab.ui.control.Label
         
         TitleLabel    matlab.ui.control.Label
         StatusLabel   matlab.ui.control.Label
@@ -92,6 +98,9 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
         WordCloudGenerated = false
         GlowTimer     % Timer for button glow animation
         GlowPhase = 0 % Animation phase
+        
+        HoaxModel     % Machine Learning Model for Hoax Detection
+        HoaxShapes    % Shape categories for the model
     end
 
     % Methods that perform app initialization and construction
@@ -159,17 +168,17 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
         
         function loadAndPlotData(app)
             try
-                app.StatusLabel.Text = 'Veri yükleniyor...';
+                app.StatusLabel.Text = 'Loading data...';
                 drawnow;
 
                 % Veriyi yükle (Caching Strategy)
                 if exist('dataset/ufo_optimized.mat', 'file')
-                    app.StatusLabel.Text = 'Önbellek yükleniyor...';
+                    app.StatusLabel.Text = 'Loading cache...';
                     drawnow;
                     loaded = load('dataset/ufo_optimized.mat', 'data');
                     app.Data = loaded.data;
                 elseif exist('dataset/ufo_cleaned.mat', 'file')
-                    app.StatusLabel.Text = 'Veri işleniyor...';
+                    app.StatusLabel.Text = 'Processing data...';
                     drawnow;
                     loaded = load('dataset/ufo_cleaned.mat', 'data');
                     raw_data = loaded.data;
@@ -185,10 +194,10 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
                     data = app.Data; %#ok<NASGU>
                     save('dataset/ufo_optimized.mat', 'data');
                 else
-                    error('dataset/ufo_cleaned.mat bulunamadı.');
+                    error('dataset/ufo_cleaned.mat not found.');
                 end
 
-                app.StatusLabel.Text = 'Harita hazırlanıyor...';
+                app.StatusLabel.Text = 'Map loading...';
                 drawnow;
 
                 % SAMPLE
@@ -310,11 +319,11 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
                     end
                 end
 
-                app.StatusLabel.Text = 'Hazır.';
+                app.StatusLabel.Text = 'Ready.';
                 app.StatusLabel.FontColor = [0.39 0.83 0.07];
 
             catch ME
-                app.StatusLabel.Text = 'Hata!';
+                app.StatusLabel.Text = 'Error!';
                 app.StatusLabel.FontColor = [1 0 0];
                 uialert(app.UIFigure, ME.message,'Hata');
             end
@@ -440,24 +449,80 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
                     desc = "No description available.";
                 end
                 app.RandomDescTextArea.Value = desc;
+
+                % ==================================================
+                % HOAX ANALYZER LOGIC (AI POWERED)
+                % ==================================================
+                
+                % Lazy Load Model
+                if isempty(app.HoaxModel)
+                    if exist('dataset/hoax_predictor.mat', 'file')
+                        loaded = load('dataset/hoax_predictor.mat', 'model', 'shapes');
+                        app.HoaxModel = loaded.model;
+                        app.HoaxShapes = loaded.shapes;
+                    else
+                        % Fallback if model not trained
+                        app.HoaxVerdictLabel.Text = "MODEL NOT FOUND";
+                        app.HoaxScoreLabel.Text = "---";
+                        return;
+                    end
+                end
+                
+                % Prepare Features
+                [~, shapeIdx] = ismember(row.shape, app.HoaxShapes);
+                if shapeIdx == 0
+                    shapeIdx = 1; % Default to first shape if unknown
+                end
+                
+                % Create table with same structure as training
+                X = table();
+                X.Shape = double(shapeIdx);
+                X.Duration = log1p(row.duration_seconds);
+                X.Hour = hour(row.datetime_parsed);
+                X.Month = month(row.datetime_parsed);
+                X.Latitude = row.latitude;
+                X.Longitude = row.longitude;
+                
+                % Predict (3-class model: Credible, Inconclusive, Hoax)
+                [label, scores] = predict(app.HoaxModel, X);
+                
+                % ClassNames order: {'Credible', 'Inconclusive', 'Hoax'}
+                % scores columns: [Credible_prob, Inconclusive_prob, Hoax_prob]
+                hoaxProb = scores(3); % Hoax is 3rd class
+                score = hoaxProb * 100;
+                
+                % Use predicted label directly
+                predictedClass = string(label);
+                
+                if predictedClass == "Credible"
+                    verdict = "CREDIBLE SIGHTING";
+                    vColor = [0 1 0.82]; % Aqua
+                elseif predictedClass == "Inconclusive"
+                    verdict = "INCONCLUSIVE";
+                    vColor = [1 0.84 0]; % Gold
+                else % Hoax
+                    verdict = "LIKELY HOAX";
+                    vColor = [1 0.2 0.2]; % Red
+                end
+
+                % Update UI
+                app.HoaxScoreLabel.Text = sprintf('%.0f%%', score);
+                app.HoaxScoreLabel.FontColor = vColor;
+                app.HoaxVerdictLabel.Text = verdict;
+                app.HoaxVerdictLabel.FontColor = vColor;
                 
             catch ME
-                uialert(app.UIFigure, ME.message, 'Error');
+                uialert(app.UIFigure, ME.message, 'Error Analysis Failed');
             end
         end
 
         function PredictButtonPushed(app, event)
             try
-                % Load Model based on Selection
-                modelType = app.ModelDropDown.Value;
-                if strcmp(modelType, 'Decision Tree')
-                    modelFile = 'dataset/ufo_model_ct.mat';
-                else
-                    modelFile = 'dataset/ufo_model_nb.mat';
-                end
+                % Load Duration Predictor Model
+                modelFile = 'dataset/duration_predictor.mat';
                 
                 if ~exist(modelFile, 'file')
-                    uialert(app.UIFigure, sprintf('Model file %s not found. Please run training script.', modelFile), 'Error');
+                    uialert(app.UIFigure, 'Duration predictor model not found. Please run train_duration_predictor.m first.', 'Error');
                     return;
                 end
                 
@@ -466,41 +531,80 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
                 shapes = loaded.shapes;
                 
                 % Prepare Input
-                % Prepare Input
+                shapeStr = app.ShapeDropDown.Value;
+                [~, shapeIdx] = ismember(shapeStr, shapes);
+                if shapeIdx == 0, shapeIdx = 1; end
+                
                 cityStr = app.CityDropDown.Value;
                 cityData = app.Data(string(app.Data.city) == cityStr, :);
                 
                 if isempty(cityData)
-                    lat = 0; lon = 0; 
+                    lat = 0; lon = 0;
+                    isUSA = 1; % Default to USA
                 else
                     lat = mean(cityData.latitude, 'omitnan');
                     lon = mean(cityData.longitude, 'omitnan');
+                    isUSA = double(any(string(cityData.country) == "us"));
                 end
                 
                 dt = app.DatePicker.Value;
                 monthVal = month(dt);
                 hourVal = app.HourEditField.Value;
-                duration = app.DurationEditField.Value;
-                shapeStr = app.ShapeDropDown.Value;
                 
-                % Encode Shape
-                [~, shapeIdx] = ismember(shapeStr, shapes);
-                if shapeIdx == 0, shapeIdx = 1; end % Default if not found
+                % Enhanced features
+                dayOfWeekVal = weekday(dt);
                 
-                % Predict
-                X = [lat, lon, monthVal, hourVal, duration, shapeIdx];
-                [~, score] = predict(model, X);
+                % Season calculation
+                if monthVal >= 3 && monthVal <= 5
+                    seasonVal = 2; % Spring
+                elseif monthVal >= 6 && monthVal <= 8
+                    seasonVal = 3; % Summer
+                elseif monthVal >= 9 && monthVal <= 11
+                    seasonVal = 4; % Fall
+                else
+                    seasonVal = 1; % Winter
+                end
                 
-                % Score is probability of class 1 (Sighting)
-                prob = score(2); 
+                isWeekendVal = double(dayOfWeekVal == 1 || dayOfWeekVal == 7);
                 
-                % Update UI
-                app.ResultLabel.Text = sprintf('%.1f%% Probability', prob * 100);
-                app.PredictionGauge.Value = prob * 100;
+                % Predict Duration Category using Ensemble
+                % Features: Shape, Lat, Lon, Month, Hour, DayOfWeek, Season, IsWeekend, IsUSA, IsNight
+                isNight = double(hourVal >= 20 || hourVal <= 6);
+                X = [shapeIdx, lat, lon, monthVal, hourVal, dayOfWeekVal, seasonVal, isWeekendVal, isUSA, isNight];
+                [predictedCat, scores] = predict(model, X);
                 
+                % Get probabilities for each category (Binary: Short vs Long)
+                classNames = model.ClassNames;
+                scoreVec = scores(1, :);
+                
+                % Find indices for each category
+                shortIdx = find(strcmp(classNames, 'Short'));
+                longIdx = find(strcmp(classNames, 'Long'));
+                
+                shortPct = scoreVec(shortIdx) * 100;
+                longPct = scoreVec(longIdx) * 100;
+                
+                % Update UI labels (Binary - hide Medium)
+                app.DurationShortLabel.Text = sprintf('SHORT (<2 min): %.1f%%', shortPct);
+                app.DurationMediumLabel.Text = ''; % Hide medium for binary
+                app.DurationLongLabel.Text = sprintf('LONG (>=2 min): %.1f%%', longPct);
+                
+                % Highlight the predicted category
+                app.DurationShortLabel.FontColor = [0.5 0.5 0.5];
+                app.DurationLongLabel.FontColor = [0.5 0.5 0.5];
+                
+                if strcmp(char(predictedCat), 'Short')
+                    app.DurationShortLabel.FontColor = [0.486 1 0]; % Green
+                else
+                    app.DurationLongLabel.FontColor = [0.4 0.8 1]; % Blue
+                end
+                
+                % Update result label
+                app.ResultLabel.Text = sprintf('Predicted Duration: %s', upper(char(predictedCat)));
                 app.ResultLabel.FontColor = [1 0.43 0.78]; % Pink
                 
-                app.StatusLabel.Text = 'Analysis Complete.';
+                app.StatusLabel.Text = 'Duration Prediction Complete.';
+                drawnow;
                 
             catch ME
                 uialert(app.UIFigure, ME.message, 'Prediction Error');
@@ -650,10 +754,15 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
                 topShape = string(shapes(maxIdx));
                 app.StatTopShapeLabel.Text = sprintf('%s', upper(topShape));
                 
-                % Date range
-                minDate = min(app.Data.datetime_parsed);
-                maxDate = max(app.Data.datetime_parsed);
-                app.StatDateRangeLabel.Text = sprintf('%d - %d', year(minDate), year(maxDate));
+                % Date range (filter out NaT values)
+                validDates = app.Data.datetime_parsed(~isnat(app.Data.datetime_parsed));
+                if ~isempty(validDates)
+                    minYear = year(min(validDates));
+                    maxYear = year(max(validDates));
+                    app.StatDateRangeLabel.Text = sprintf('%d - %d', minYear, maxYear);
+                else
+                    app.StatDateRangeLabel.Text = 'No valid dates';
+                end
                 
             catch ME
                 app.StatTotalLabel.Text = 'Error loading';
@@ -1003,150 +1112,145 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
             app.HourlyAxes.FontSize = 10;
 
             % ============================
-            % PREDICTION PANEL
+            % PREDICTION PANEL (Duration Predictor)
             % ============================
             app.PredictionPanel = uipanel(app.UIFigure);
             app.PredictionPanel.Position = [201 1 999 770];
             app.PredictionPanel.BackgroundColor = [0.043 0.07 0.125];
             app.PredictionPanel.BorderType = 'line';
             app.PredictionPanel.HighlightColor = [1 0.43 0.78];
-            app.PredictionPanel.Title = '>> PREDICTION_CORE';
+            app.PredictionPanel.Title = '>> DURATION_PREDICTOR';
             app.PredictionPanel.FontName = 'Consolas';
             app.PredictionPanel.FontSize = 12;
             app.PredictionPanel.FontWeight = 'bold';
             app.PredictionPanel.ForegroundColor = [1 0.43 0.78];
             app.PredictionPanel.Visible = 'off';
             
-            % Input Sentence Construction
-            % "I saw a [Shape] shaped UFO in [City] on [Date] at [Hour]:[Minute] for [Duration] seconds."
-            
             % Input Panel Container
             app.InputPanel = uipanel(app.PredictionPanel);
-            app.InputPanel.Position = [50 500 900 200];
+            app.InputPanel.Position = [50 480 900 220];
             app.InputPanel.BackgroundColor = [0.06 0.09 0.15];
             app.InputPanel.BorderType = 'line';
             app.InputPanel.HighlightColor = [1 0.43 0.78];
-            app.InputPanel.Title = '>> SIGHTING_PARAMETERS';
+            app.InputPanel.Title = '>> SIGHTING_SCENARIO';
             app.InputPanel.FontName = 'Consolas';
             app.InputPanel.FontSize = 12;
             app.InputPanel.FontWeight = 'bold';
             app.InputPanel.ForegroundColor = [1 0.43 0.78];
 
-            % Row 1: "I saw a [Shape] shaped UFO in [City]"
-            uilabel(app.InputPanel, 'Position', [20 130 80 30], 'Text', 'I saw a', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
+            % Row 1: "I saw a [Shape] shaped UFO"
+            uilabel(app.InputPanel, 'Position', [20 150 100 30], 'Text', 'I saw a', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
             
             app.ShapeDropDown = uidropdown(app.InputPanel);
-            app.ShapeDropDown.Position = [110 125 150 35];
-            app.ShapeDropDown.Items = {'light', 'triangle', 'circle', 'fireball', 'other', 'unknown', 'sphere', 'disk', 'oval'};
+            app.ShapeDropDown.Position = [130 145 180 35];
+            app.ShapeDropDown.Items = {'light', 'triangle', 'circle', 'fireball', 'sphere', 'disk', 'oval', 'formation', 'changing', 'other'};
             app.ShapeDropDown.FontName = 'Consolas';
             app.ShapeDropDown.FontSize = 14;
             app.ShapeDropDown.BackgroundColor = [0.043 0.07 0.125];
             app.ShapeDropDown.FontColor = [0.9 0.97 1.0];
             
-            uilabel(app.InputPanel, 'Position', [270 130 130 30], 'Text', 'shaped UFO in', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
+            uilabel(app.InputPanel, 'Position', [320 150 130 30], 'Text', 'shaped UFO in', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
             
             app.CityDropDown = uidropdown(app.InputPanel);
-            app.CityDropDown.Position = [410 125 460 35];
-            app.CityDropDown.Items = {'Loading...'}; % Populated later
+            app.CityDropDown.Position = [460 145 410 35];
+            app.CityDropDown.Items = {'Loading...'};
             app.CityDropDown.FontName = 'Consolas';
             app.CityDropDown.FontSize = 14;
             app.CityDropDown.BackgroundColor = [0.043 0.07 0.125];
             app.CityDropDown.FontColor = [0.9 0.97 1.0];
 
             % Row 2: "on [Date] at [Hour]:[Minute]"
-            uilabel(app.InputPanel, 'Position', [20 80 30 30], 'Text', 'on', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
+            uilabel(app.InputPanel, 'Position', [20 95 30 30], 'Text', 'on', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
             
             app.DatePicker = uidatepicker(app.InputPanel);
-            app.DatePicker.Position = [60 75 180 35];
+            app.DatePicker.Position = [60 90 180 35];
             app.DatePicker.Value = datetime('today');
             app.DatePicker.FontSize = 14;
             app.DatePicker.BackgroundColor = [0.043 0.07 0.125];
             app.DatePicker.FontColor = [0.9 0.97 1.0];
             
-            uilabel(app.InputPanel, 'Position', [260 80 30 30], 'Text', 'at', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
+            uilabel(app.InputPanel, 'Position', [260 95 30 30], 'Text', 'at', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
             
             app.HourEditField = uieditfield(app.InputPanel, 'numeric');
-            app.HourEditField.Position = [300 75 60 35];
+            app.HourEditField.Position = [300 90 60 35];
             app.HourEditField.Limits = [0 23];
             app.HourEditField.Value = 22;
             app.HourEditField.FontSize = 14;
             app.HourEditField.BackgroundColor = [0.043 0.07 0.125];
             app.HourEditField.FontColor = [0.9 0.97 1.0];
             
-            uilabel(app.InputPanel, 'Position', [365 80 15 30], 'Text', ':', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
+            uilabel(app.InputPanel, 'Position', [365 95 15 30], 'Text', ':', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
             
             app.MinuteEditField = uieditfield(app.InputPanel, 'numeric');
-            app.MinuteEditField.Position = [385 75 60 35];
+            app.MinuteEditField.Position = [385 90 60 35];
             app.MinuteEditField.Limits = [0 59];
             app.MinuteEditField.Value = 0;
             app.MinuteEditField.FontSize = 14;
             app.MinuteEditField.BackgroundColor = [0.043 0.07 0.125];
             app.MinuteEditField.FontColor = [0.9 0.97 1.0];
             
-            % Row 3: "for [Duration] seconds" + Model Selection
-            uilabel(app.InputPanel, 'Position', [20 30 30 30], 'Text', 'for', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
-            
-            app.DurationEditField = uieditfield(app.InputPanel, 'numeric');
-            app.DurationEditField.Position = [60 25 100 35];
-            app.DurationEditField.Value = 60;
-            app.DurationEditField.FontSize = 14;
-            app.DurationEditField.BackgroundColor = [0.043 0.07 0.125];
-            app.DurationEditField.FontColor = [0.9 0.97 1.0];
-            
-            uilabel(app.InputPanel, 'Position', [170 30 80 30], 'Text', 'seconds', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [0.9 0.97 1.0]);
-            
-            % Model Selection (Same Row)
-            uilabel(app.InputPanel, 'Position', [460 30 130 30], 'Text', 'Model:', 'FontName', 'Consolas', 'FontSize', 16, 'FontColor', [1 0.43 0.78]);
-            
-            app.ModelDropDown = uidropdown(app.InputPanel);
-            app.ModelDropDown.Position = [560 25 310 35];
-            app.ModelDropDown.Items = {'Decision Tree', 'Naive Bayes'};
-            app.ModelDropDown.Value = 'Decision Tree';
-            app.ModelDropDown.FontName = 'Consolas';
-            app.ModelDropDown.FontSize = 14;
-            app.ModelDropDown.BackgroundColor = [0.043 0.07 0.125];
-            app.ModelDropDown.FontColor = [0.9 0.97 1.0];
+            % Row 3: Explanation
+            uilabel(app.InputPanel, 'Position', [20 40 860 30], 'Text', 'How long will the sighting last?', 'FontName', 'Consolas', 'FontSize', 18, 'FontWeight', 'bold', 'FontColor', [1 0.43 0.78]);
 
-            % Predict Button (Below Input Panel)
+            % Predict Button
             app.PredictButton = uibutton(app.PredictionPanel, 'push');
-            app.PredictButton.Position = [50 450 900 60];
-            app.PredictButton.Text = '>> ANALYZE PROBABILITY';
+            app.PredictButton.Position = [50 400 900 60];
+            app.PredictButton.Text = '>> PREDICT DURATION';
             app.PredictButton.FontName = 'Consolas';
             app.PredictButton.FontSize = 18;
             app.PredictButton.FontWeight = 'bold';
-            app.PredictButton.BackgroundColor = [1 0.43 0.78]; % Pink
+            app.PredictButton.BackgroundColor = [1 0.43 0.78];
             app.PredictButton.FontColor = [0 0 0];
             app.PredictButton.ButtonPushedFcn = createCallbackFcn(app, @PredictButtonPushed, true);
 
-            % Result Panel (Below Button)
+            % Result Panel
             app.ResultPanel = uipanel(app.PredictionPanel);
-            app.ResultPanel.Position = [50 200 900 230];
+            app.ResultPanel.Position = [50 80 900 300];
             app.ResultPanel.BackgroundColor = [0.06 0.09 0.15];
             app.ResultPanel.BorderType = 'line';
             app.ResultPanel.HighlightColor = [1 0.43 0.78];
-            app.ResultPanel.Title = '>> ANALYSIS_RESULT';
+            app.ResultPanel.Title = '>> DURATION_ANALYSIS';
             app.ResultPanel.FontName = 'Consolas';
             app.ResultPanel.FontSize = 12;
             app.ResultPanel.FontWeight = 'bold';
             app.ResultPanel.ForegroundColor = [1 0.43 0.78];
             
-            % Prediction Gauge (Inside Result Panel)
-            app.PredictionGauge = uigauge(app.ResultPanel, 'linear');
-            app.PredictionGauge.Position = [20 130 860 50];
-            app.PredictionGauge.Limits = [0 100];
-            app.PredictionGauge.BackgroundColor = [0.043 0.07 0.125];
-            app.PredictionGauge.ScaleColors = [1 0.43 0.78; 0.486 1 0];
-            app.PredictionGauge.ScaleColorLimits = [0 50; 50 100];
-            
-            % Result Label (Inside Result Panel)
+            % Main Result Label
             app.ResultLabel = uilabel(app.ResultPanel);
-            app.ResultLabel.Position = [20 30 860 80];
-            app.ResultLabel.Text = 'Ready to analyze. Enter parameters and click the button above.';
+            app.ResultLabel.Position = [20 210 860 50];
+            app.ResultLabel.Text = 'Select parameters and click PREDICT DURATION';
             app.ResultLabel.FontName = 'Consolas';
-            app.ResultLabel.FontSize = 20;
+            app.ResultLabel.FontSize = 22;
             app.ResultLabel.FontWeight = 'bold';
             app.ResultLabel.FontColor = [0.9 0.97 1.0];
             app.ResultLabel.HorizontalAlignment = 'center';
+            
+            % Duration Category Labels
+            uilabel(app.ResultPanel, 'Position', [20 165 200 30], 'Text', 'Duration Probabilities:', 'FontName', 'Consolas', 'FontSize', 16, 'FontWeight', 'bold', 'FontColor', [1 0.43 0.78]);
+            
+            app.DurationShortLabel = uilabel(app.ResultPanel);
+            app.DurationShortLabel.Position = [20 115 860 40];
+            app.DurationShortLabel.Text = 'SHORT (<1 min): ---%';
+            app.DurationShortLabel.FontName = 'Consolas';
+            app.DurationShortLabel.FontSize = 22;
+            app.DurationShortLabel.FontWeight = 'bold';
+            app.DurationShortLabel.FontColor = [0.5 0.5 0.5];
+            
+            app.DurationMediumLabel = uilabel(app.ResultPanel);
+            app.DurationMediumLabel.Position = [20 65 860 40];
+            app.DurationMediumLabel.Text = 'MEDIUM (1-10 min): ---%';
+            app.DurationMediumLabel.FontName = 'Consolas';
+            app.DurationMediumLabel.FontSize = 22;
+            app.DurationMediumLabel.FontWeight = 'bold';
+            app.DurationMediumLabel.FontColor = [0.5 0.5 0.5];
+            
+            app.DurationLongLabel = uilabel(app.ResultPanel);
+            app.DurationLongLabel.Position = [20 15 860 40];
+            app.DurationLongLabel.Text = 'LONG (>10 min): ---%';
+            app.DurationLongLabel.FontName = 'Consolas';
+            app.DurationLongLabel.FontSize = 22;
+            app.DurationLongLabel.FontWeight = 'bold';
+            app.DurationLongLabel.FontColor = [0.5 0.5 0.5];
 
             % ============================
             % RANDOM PANEL
@@ -1216,9 +1320,9 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
             app.RandomDurationLabel.FontSize = 18;
             app.RandomDurationLabel.FontColor = 'white';
             
-            % Description Panel
+            % Description Panel (Resized for Layout)
             app.DescriptionPanel = uipanel(app.RandomPanel);
-            app.DescriptionPanel.Position = [50 170 900 220];
+            app.DescriptionPanel.Position = [50 170 500 220]; 
             app.DescriptionPanel.BackgroundColor = [0.06 0.09 0.15];
             app.DescriptionPanel.BorderType = 'line';
             app.DescriptionPanel.HighlightColor = [0 1 0.82];
@@ -1229,12 +1333,54 @@ classdef UFOVisualizerApp < matlab.apps.AppBase
             app.DescriptionPanel.ForegroundColor = [0 1 0.82];
             
             app.RandomDescTextArea = uitextarea(app.DescriptionPanel);
-            app.RandomDescTextArea.Position = [10 10 880 180];
+            app.RandomDescTextArea.Position = [10 10 480 180];
             app.RandomDescTextArea.Editable = 'off';
             app.RandomDescTextArea.FontName = 'Consolas';
             app.RandomDescTextArea.FontSize = 14;
             app.RandomDescTextArea.BackgroundColor = [0.15 0.15 0.18];
             app.RandomDescTextArea.FontColor = 'white';
+
+            % Hoax Analyzer Panel (New)
+            app.HoaxPanel = uipanel(app.RandomPanel);
+            app.HoaxPanel.Position = [560 170 390 220]; 
+            app.HoaxPanel.BackgroundColor = [0.06 0.09 0.15];
+            app.HoaxPanel.BorderType = 'line';
+            app.HoaxPanel.HighlightColor = [1 0.2 0.2]; % Red/Warning Color
+            app.HoaxPanel.Title = '>> HOAX_ANALYZER';
+            app.HoaxPanel.FontName = 'Consolas';
+            app.HoaxPanel.FontSize = 12;
+            app.HoaxPanel.FontWeight = 'bold';
+            app.HoaxPanel.ForegroundColor = [1 0.2 0.2];
+            
+            % Analyzer Title
+            app.HoaxTitleLabel = uilabel(app.HoaxPanel);
+            app.HoaxTitleLabel.Position = [10 150 370 30];
+            app.HoaxTitleLabel.Text = 'PROBABILITY OF HOAX:';
+            app.HoaxTitleLabel.FontName = 'Consolas';
+            app.HoaxTitleLabel.FontSize = 14;
+            app.HoaxTitleLabel.FontColor = [0.8 0.8 0.8];
+            app.HoaxTitleLabel.HorizontalAlignment = 'center';
+
+            % Score Label
+            app.HoaxScoreLabel = uilabel(app.HoaxPanel);
+            app.HoaxScoreLabel.Position = [10 80 370 70];
+            app.HoaxScoreLabel.Text = '---%';
+            app.HoaxScoreLabel.FontName = 'Consolas';
+            app.HoaxScoreLabel.FontSize = 48;
+            app.HoaxScoreLabel.FontWeight = 'bold';
+            app.HoaxScoreLabel.FontColor = [1 0.2 0.2];
+            app.HoaxScoreLabel.HorizontalAlignment = 'center';
+
+            % Verdict Label
+            app.HoaxVerdictLabel = uilabel(app.HoaxPanel);
+            app.HoaxVerdictLabel.Position = [10 20 370 50];
+            app.HoaxVerdictLabel.Text = 'ANALYZING...';
+            app.HoaxVerdictLabel.FontName = 'Consolas';
+            app.HoaxVerdictLabel.FontSize = 16;
+            app.HoaxVerdictLabel.FontWeight = 'bold';
+            app.HoaxVerdictLabel.FontColor = [0.8 0.8 0.8];
+            app.HoaxVerdictLabel.HorizontalAlignment = 'center';
+            app.HoaxVerdictLabel.WordWrap = 'on';
             
             % Next Button
             app.NextRandomButton = uibutton(app.RandomPanel, 'push');
